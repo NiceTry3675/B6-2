@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 
 COMMIT_TITLE_RECOMMENDED = 50
 COMMIT_TITLE_MAX = 72
+COMMIT_BODY_MAX_BULLETS = 2  # 요구사항: 핵심 변경 사항 1~2개를 불릿으로 요약
+COMMIT_BODY_MAX_FILES = 3  # 요구사항: 변경된 파일(또는 모듈) 1~3개 언급
 PR_TITLE_MAX = 80
 PR_SECTIONS = ("Why", "What", "How to Test")
 PLACEHOLDER_BULLET = "(AI가 작성하지 못함 - 직접 작성 필요)"
@@ -127,7 +129,33 @@ def finalize_commit(msg: CommitMessage) -> tuple[CommitMessage, list[str]]:
         notes.append(f"커밋 제목이 {len(title)}자로 권장 길이({COMMIT_TITLE_RECOMMENDED}자)를 넘습니다.")
     if title and not _CONVENTIONAL_RX.match(title):
         notes.append("커밋 제목이 '<type>: <요약>' 형식이 아닙니다.")
-    return CommitMessage(title=title, body=msg.body), notes
+
+    # 본문 최소 품질 기준: 불릿을 최대 2개로 맞춘다. 프롬프트가 중요한 순서로 쓰게 하므로 뒤쪽을 버린다.
+    body = list(msg.body)
+    if len(body) > COMMIT_BODY_MAX_BULLETS:
+        dropped = body[COMMIT_BODY_MAX_BULLETS:]
+        body = body[:COMMIT_BODY_MAX_BULLETS]
+        notes.append(
+            f"커밋 본문 불릿이 {len(body) + len(dropped)}개라 앞의 {COMMIT_BODY_MAX_BULLETS}개만 남겼습니다. "
+            f"(제거: {' / '.join(dropped)})"
+        )
+    return CommitMessage(title=title, body=body), notes
+
+
+def count_file_mentions(lines: list[str], paths: list[str]) -> int:
+    """본문에 변경 파일이 몇 개 언급됐는지 센다. 전체 경로나 파일 이름이 나오면 언급으로 본다."""
+    text = "\n".join(lines)
+
+    def mentioned(word: str) -> bool:
+        # test_cli.py 안의 cli.py 처럼 다른 이름의 일부로 들어간 경우는 세지 않는다.
+        return bool(word) and re.search(rf"(?<![\w./-]){re.escape(word)}(?![\w-])", text) is not None
+
+    count = 0
+    for path in paths:
+        name = path.rstrip("/").rsplit("/", 1)[-1]
+        if mentioned(path) or mentioned(name):
+            count += 1
+    return count
 
 
 # ---------------------------------------------------------------- PR

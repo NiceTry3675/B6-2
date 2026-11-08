@@ -15,9 +15,12 @@ from typing import Callable
 from . import prompts
 from .ai_client import API_KEY_ENV_VARS, AIError, GeminiClient, GenerationParams
 from .formatter import (
+    COMMIT_BODY_MAX_BULLETS,
+    COMMIT_BODY_MAX_FILES,
     COMMIT_TITLE_MAX,
     COMMIT_TITLE_RECOMMENDED,
     PR_TITLE_MAX,
+    count_file_mentions,
     drop_truncated_tail,
     finalize_commit,
     finalize_pr,
@@ -34,6 +37,7 @@ DEFAULT_TIMEOUT = 60.0
 # 안전 모드가 꺼져 있어도 이보다 긴 diff는 잘라서 보낸다 (비용/한도 보호).
 HARD_DIFF_CHAR_LIMIT = 60_000
 MAX_AI_CALLS = 2  # 최초 1회 + 형식 오류 시 재생성 1회
+FILE_LIST_LIMIT = 20  # 로그에 보여 줄 변경 파일 수
 
 TOOL_DIR = Path(__file__).resolve().parent.parent
 
@@ -223,6 +227,10 @@ def run(argv: list[str] | None = None) -> int:
         changes.mode, f"{changes.mode.split(':', 1)[-1]}...HEAD 기준"
     )
     log("INFO", f"Git status 수집 완료: {len(changes.files)}개 파일 변경 감지 ({scope})")
+    for f in changes.files[:FILE_LIST_LIMIT]:
+        print(f"         {f.status:<2} {f.path}", file=sys.stderr)
+    if len(changes.files) > FILE_LIST_LIMIT:
+        print(f"         ... 외 {len(changes.files) - FILE_LIST_LIMIT}개", file=sys.stderr)
     log("INFO", f"Git diff 수집 완료: {changes.diff_line_count}줄")
 
     try:
@@ -267,8 +275,10 @@ def run(argv: list[str] | None = None) -> int:
     log("INFO", f"AI API 호출 횟수: {client.call_count}회")
 
     if args.command == "commit":
+        mentioned = count_file_mentions(final.body, [f.path for f in changes.files])
         log("CHECK", f"커밋 제목 {len(final.title)}자 (권장 {COMMIT_TITLE_RECOMMENDED}자 / 최대 {COMMIT_TITLE_MAX}자), "
-                     f"본문 불릿 {len(final.body)}개")
+                     f"본문 불릿 {len(final.body)}개 (최대 {COMMIT_BODY_MAX_BULLETS}개), "
+                     f"언급 파일 {mentioned}개 (권장 1~{COMMIT_BODY_MAX_FILES}개)")
         log("DONE", "커밋 메시지 생성 완료")
         if args.raw:
             print(final.render())

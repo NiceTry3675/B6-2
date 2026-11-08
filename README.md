@@ -109,35 +109,44 @@ git commit -F /tmp/msg.txt
 
 ## 4. 출력 예시
 
-아래는 이 저장소의 첫 구현 변경(16개 파일)에 실제로 실행한 결과입니다.
+아래는 이 저장소에서 실제로 실행한 결과입니다.
 
 ### 커밋 메시지
 
+커밋 본문 규칙을 보강한 변경(staged 파일 5개)에 실행한 결과입니다.
+
 ```text
-$ python main.py commit
-[INFO] Git status 수집 완료: 16개 파일 변경 감지 (작업 트리 전체 기준)
-[INFO] Git diff 수집 완료: 1594줄
+$ python main.py commit --context "요구사항 4.3 커밋 본문 최소 품질 기준(불릿 1~2개, 파일 1~3개 언급)을 코드로 보장"
+[INFO] Git status 수집 완료: 5개 파일 변경 감지 (staged 변경 기준)
+         M  gitgen/cli.py
+         M  gitgen/formatter.py
+         M  gitgen/prompts.py
+         M  tests/test_cli.py
+         M  tests/test_formatter.py
+[INFO] Git diff 수집 완료: 172줄
 [INFO] AI API 요청 중... (model=gemini-3.8-flash, temperature=0.3, max_tokens=1024)
-[INFO] 토큰 사용량: 입력 21112, 출력 136
+[INFO] 토큰 사용량: 입력 3349, 출력 73
 [INFO] AI API 호출 횟수: 1회
-[CHECK] 커밋 제목 39자 (권장 50자 / 최대 72자), 본문 불릿 3개
+[CHECK] 커밋 제목 36자 (권장 50자 / 최대 72자), 본문 불릿 2개 (최대 2개), 언급 파일 2개 (권장 1~3개)
 [DONE] 커밋 메시지 생성 완료
 
 --- Commit Message ---
-feat: AI 기반 Git 커밋 메시지 및 PR 초안 생성 도구 구현
+feat: 커밋 본문 불릿 수 제한 및 파일 언급 검증 로직 추가
 
-- Gemini API 연동 클라이언트 및 프롬프트 로직 구현 (gitgen/ai_client.py, gitgen/prompts.py)
-- Git 변경 사항 수집, 민감정보 마스킹 안전 모드, 출력 포맷터 및 CLI 진입점 추가 (gitgen/git_collector.py, gitgen/safe_mode.py, gitgen/formatter.py, gitgen/cli.py)
-- 각 모듈별 단위 테스트 작성 및 패키지 설정 추가 (tests/, main.py, .gitignore)
+- `formatter.py`에 커밋 본문 최대 불릿 수(2개) 제한 및 언급 파일 수 집계 함수 추가
+- `cli.py` 및 프롬프트에 커밋 본문 품질 기준 반영과 변경 파일 상세 로그 출력 추가
 ----------------------
 ```
 
 ### PR 제목/본문
 
+첫 구현 변경(16개 파일)에 실행한 결과입니다. 변경 파일 목록 16줄은 생략했습니다.
+
 ```text
 $ python main.py pr --context "커밋 메시지와 PR 설명을 매번 손으로 쓰는 시간을 줄이기 위해"
 [INFO] 현재 브랜치: main
 [INFO] Git status 수집 완료: 16개 파일 변경 감지 (작업 트리 전체 기준)
+         (변경 파일 목록 16줄 생략)
 [INFO] Git diff 수집 완료: 1594줄
 [INFO] AI API 요청 중... (model=gemini-3.8-flash, temperature=0.3, max_tokens=1024)
 [INFO] 토큰 사용량: 입력 21201, 출력 318
@@ -193,7 +202,7 @@ feat: Gemini 기반 Git 커밋 메시지 및 PR 초안 자동 생성 도구 구�
 | 항목 | 규칙 | 처리 방식 |
 | --- | --- | --- |
 | 커밋 제목 | 50자 이내 권장, 최대 72자 | 72자를 넘으면 단어 경계에서 자르고, 50자를 넘으면 경고합니다 |
-| 커밋 본문 | 선택. 있으면 불릿 1~3개 + 파일/모듈 언급 | 불릿 기호를 `- `로 통일합니다 |
+| 커밋 본문 | 선택. 있으면 핵심 변경 불릿 1~2개 + 대표 파일/모듈 1~3개 언급 | 불릿 기호를 `- `로 통일합니다. 불릿이 2개를 넘으면 앞의 2개만 남기고, 언급한 파일 수를 `[CHECK]` 로그로 보여 줍니다 |
 | PR 제목 | 최대 80자 | 넘으면 자릅니다 |
 | PR 본문 | `## Why`, `## What`, `## How to Test` + 섹션마다 불릿 1개 이상 | 섹션이 없거나 비면 **1회 재생성**합니다. 그래도 비면 자리표시 불릿을 넣고 경고합니다 |
 
@@ -283,12 +292,17 @@ python main.py commit --dry-run --max-files 3 --max-lines 30 --mask-pattern 'MAX
 | `temperature` | 같은 diff에 거의 같은 문장이 나옵니다. 규칙을 잘 지킵니다 | 단어 선택과 문장 구성이 실행마다 달라집니다. 규칙을 어길 가능성이 커집니다 | `0.3`: 커밋 메시지는 창의성보다 일관성이 중요해서 낮게 잡았습니다 |
 | `max_tokens` | 응답이 중간에 잘립니다. 잘린 불릿은 버립니다 | 길이 제한이 넉넉해집니다. 실제 길이는 프롬프트 규칙(불릿 개수)이 정합니다 | `1024`: 실측 출력이 커밋 약 140토큰, PR 약 320토큰이라 여유를 2~3배 이상 두었습니다 |
 
-같은 변경에서 `--max-tokens 60`으로 실행하면 응답이 잘리고, 미완성 불릿을 버린 결과가 나옵니다.
+4장의 커밋 예시와 같은 변경에서 `--max-tokens 40`으로 실행하면 응답이 잘립니다. 미완성 불릿은 버리고 제목만 남습니다. 기본값(1024)으로 실행했을 때는 불릿 2개가 나왔습니다.
 
 ```text
 [WARN] max_tokens 한도에 도달해 응답이 잘렸습니다. 필요하면 --max-tokens 값을 늘리세요.
-[FIX] 응답이 잘려 미완성 불릿을 제거했습니다: 'Git'
-[CHECK] 커밋 제목 39자 (권장 50자 / 최대 72자), 본문 불릿 1개
+[INFO] 토큰 사용량: 입력 3302, 출력 36
+[FIX] 응답이 잘려 미완성 불릿을 제거했습니다: 'formatter.py에 본문 불릿을 최대 2개로 제한하고 파일'
+[CHECK] 커밋 제목 34자 (권장 50자 / 최대 72자), 본문 불릿 0개 (최대 2개), 언급 파일 0개 (권장 1~3개)
+
+--- Commit Message ---
+feat: 커밋 본문 불릿 수 제한 및 파일 언급 검증 추가
+----------------------
 ```
 
 Gemini flash 모델은 답하기 전에 "생각(thinking)" 토큰을 수백 개 쓰는데, 이 토큰도 `max_tokens`에서 빠집니다. 그래서 flash 모델을 쓸 때는 thinking을 끕니다(`thinkingBudget: 0`). pro 모델은 thinking을 끌 수 없으니 `--max-tokens`를 넉넉히 주세요.

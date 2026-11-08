@@ -7,6 +7,8 @@ AI에게 줄 '역할 + 출력 규칙(system)'과 '변경 맥락(user)'을 분리
 from __future__ import annotations
 
 from .formatter import (
+    COMMIT_BODY_MAX_BULLETS,
+    COMMIT_BODY_MAX_FILES,
     COMMIT_TITLE_MAX,
     COMMIT_TITLE_RECOMMENDED,
     PR_SECTIONS,
@@ -28,9 +30,9 @@ COMMIT_SYSTEM = f"""너는 코드 변경을 읽고 Git 커밋 메시지를 작�
 - 첫 줄은 Conventional Commits 형식의 제목 1줄이다. type은 {COMMIT_TYPES} 중 하나.
 - 제목은 한국어로, {COMMIT_TITLE_RECOMMENDED}자 이내(절대 {COMMIT_TITLE_MAX}자 초과 금지)로 쓰고 마침표를 찍지 않는다.
 - 제목은 "~ 추가", "~ 수정"처럼 명사형으로 끝낸다.
-- 제목 다음 빈 줄 1개, 그 아래 본문은 "- "로 시작하는 불릿 1~3개다.
-- 본문 불릿에는 변경된 파일 또는 모듈 이름을 1~3개 언급한다.
-- 여러 변경이 섞여 있으면 가장 중요한 변경을 제목으로, 나머지를 불릿으로 쓴다.
+- 제목 다음 빈 줄 1개, 그 아래 본문은 "- "로 시작하는 불릿 1~{COMMIT_BODY_MAX_BULLETS}개다. 핵심 변경만 중요한 순서로 쓴다.
+- 본문 전체에서 변경된 파일 또는 모듈 이름은 대표적인 것 1~{COMMIT_BODY_MAX_FILES}개만 언급한다. 파일을 나열하지 않는다.
+- 여러 변경이 섞여 있으면 가장 중요한 변경을 제목으로, 그다음 중요한 변경을 불릿으로 쓴다.
 - diff에 없는 내용은 지어내지 않는다. `[MASKED:...]`로 가려진 값은 추측하지 않는다.
 - 커밋 메시지 외의 설명, 인사말, 코드 블록(```)은 출력하지 않는다."""
 
