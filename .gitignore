@@ -1,2 +1,5 @@
 .env
 INTERVIEW_CHECKLIST.md
+__pycache__/
+*.pyc
+.venv/
