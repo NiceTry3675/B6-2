@@ -58,6 +58,8 @@ class CliTest(GitRepoTestCase):
         self.assertEqual(code, 0)
         self.assertEqual(gen.call_count, 1)
         self.assertIn("--- Commit Message ---\nfeat: a.py 수정\n\n- a.py 출력 변경", out)
+        self.assertIn("M  a.py", err)  # 변경 파일 목록이 로그에 나온다
+        self.assertIn("언급 파일 1개", err)
 
     def test_pr_retries_once_then_fills(self):
         (self.repo / "a.py").write_text("print('changed')\n")

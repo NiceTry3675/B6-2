@@ -4,6 +4,7 @@ from gitgen.formatter import (
     COMMIT_TITLE_MAX,
     PLACEHOLDER_BULLET,
     PR_TITLE_MAX,
+    count_file_mentions,
     drop_truncated_tail,
     finalize_commit,
     finalize_pr,
@@ -35,6 +36,24 @@ class CommitFormatTest(unittest.TestCase):
         final, notes = finalize_commit(msg)
         self.assertLessEqual(len(final.title), COMMIT_TITLE_MAX)
         self.assertTrue(any("잘랐습니다" in n for n in notes))
+
+    def test_body_trimmed_to_two_bullets(self):
+        msg, _ = parse_commit("feat: x\n\n- 첫째\n- 둘째\n- 셋째\n- 넷째")
+        final, notes = finalize_commit(msg)
+        self.assertEqual(final.body, ["첫째", "둘째"])
+        self.assertTrue(any("셋째 / 넷째" in n for n in notes))
+
+    def test_two_bullets_untouched(self):
+        msg, _ = parse_commit("feat: x\n\n- 첫째\n- 둘째")
+        final, notes = finalize_commit(msg)
+        self.assertEqual(final.body, ["첫째", "둘째"])
+        self.assertEqual(notes, [])
+
+    def test_count_file_mentions(self):
+        paths = ["gitgen/cli.py", "gitgen/formatter.py", "README.md", "tests/test_cli.py"]
+        body = ["cli.py 로그 개선 (gitgen/formatter.py)", "README.md 갱신"]
+        self.assertEqual(count_file_mentions(body, paths), 3)
+        self.assertEqual(count_file_mentions(["test_cli.py"], ["cli.py"]), 0)
 
     def test_warns_when_over_recommended(self):
         msg, _ = parse_commit("feat: " + "가" * 50)
