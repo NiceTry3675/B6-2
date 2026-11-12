@@ -28,6 +28,10 @@ _SECTION_RX = re.compile(r"^\s*(?:#{1,6}\s*|\*\*\s*)(why|what|how\s+to\s+test)\b
 _CONVENTIONAL_RX = re.compile(r"^[a-z]+(?:\([^)]+\))?!?: \S")
 
 
+class OutputError(Exception):
+    """AI 출력을 결과로 쓸 수 없을 때. (예: max_tokens에 걸려 제목이 완성되지 않음)"""
+
+
 @dataclass
 class CommitMessage:
     title: str
@@ -86,15 +90,29 @@ def _tidy_title(title: str) -> str:
     return title.rstrip("。.").strip()
 
 
+def title_may_be_cut(parsed: "CommitMessage | PRDraft") -> bool:
+    """응답이 max_tokens로 잘렸을 때, 제목 줄에서 끊겼을 수 있는지 본다.
+
+    제목 뒤에 불릿(커밋)이나 섹션(PR)이 하나라도 시작됐다면 제목 줄은 끝까지 나온 것이다.
+    아무것도 없으면 제목 줄 안에서 끊겼을 수 있고, 코드로는 완성 여부를 알 수 없다.
+    """
+    if isinstance(parsed, CommitMessage):
+        return not parsed.body
+    return not parsed.sections
+
+
 def drop_truncated_tail(parsed: "CommitMessage | PRDraft") -> str | None:
     """max_tokens로 응답이 잘렸을 때, 중간에 끊긴 마지막 불릿을 버린다."""
     if isinstance(parsed, CommitMessage):
         if parsed.body:
             return f"응답이 잘려 미완성 불릿을 제거했습니다: '{parsed.body.pop()}'"
         return None
-    for name in reversed(list(parsed.sections)):
-        if parsed.sections[name]:
-            return f"응답이 잘려 '## {name}'의 미완성 불릿을 제거했습니다: '{parsed.sections[name].pop()}'"
+    # 끊긴 곳은 마지막으로 시작된 섹션이다. 그 섹션에 불릿이 없으면(헤더 직후에 끊김)
+    # 앞 섹션의 불릿은 끝까지 나온 것이므로 건드리지 않는다.
+    names = list(parsed.sections)
+    if names and parsed.sections[names[-1]]:
+        last = names[-1]
+        return f"응답이 잘려 '## {last}'의 미완성 불릿을 제거했습니다: '{parsed.sections[last].pop()}'"
     return None
 
 
@@ -148,7 +166,10 @@ def count_file_mentions(lines: list[str], paths: list[str]) -> int:
 
     def mentioned(word: str) -> bool:
         # test_cli.py 안의 cli.py 처럼 다른 이름의 일부로 들어간 경우는 세지 않는다.
-        return bool(word) and re.search(rf"(?<![\w./-]){re.escape(word)}(?![\w-])", text) is not None
+        # 경계는 영문/숫자 기준으로만 본다. \w 는 한글도 포함해서 "cli.py의"처럼 조사가 붙으면 놓친다.
+        return bool(word) and re.search(
+            rf"(?<![A-Za-z0-9_./-]){re.escape(word)}(?![A-Za-z0-9_-])", text
+        ) is not None
 
     count = 0
     for path in paths:

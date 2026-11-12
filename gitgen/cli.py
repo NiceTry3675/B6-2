@@ -20,12 +20,14 @@ from .formatter import (
     COMMIT_TITLE_MAX,
     COMMIT_TITLE_RECOMMENDED,
     PR_TITLE_MAX,
+    OutputError,
     count_file_mentions,
     drop_truncated_tail,
     finalize_commit,
     finalize_pr,
     parse_commit,
     parse_pr,
+    title_may_be_cut,
 )
 from .git_collector import Changes, GitError, collect_changes, ensure_repo_root
 from .safe_mode import DEFAULT_MAX_FILES, DEFAULT_MAX_LINES, SafeModeConfig, apply_safe_mode
@@ -176,6 +178,12 @@ def generate_with_retry(
         parsed, problems = parse(result.text)
 
     if result.truncated:
+        # 제목 뒤에 아무것도 없으면 제목 줄에서 끊겼을 수 있다. 끊긴 제목을 결과로 내보내지 않는다.
+        if title_may_be_cut(parsed):
+            raise OutputError(
+                "max_tokens 한도에 걸려 제목이 완성되지 않았을 수 있어 결과를 출력하지 않습니다. "
+                "--max-tokens 값을 늘리세요."
+            )
         note = drop_truncated_tail(parsed)
         if note:
             log("FIX", note)
@@ -267,6 +275,10 @@ def run(argv: list[str] | None = None) -> int:
             final, notes = finalize_pr(parsed)
     except AIError as exc:
         log("ERROR", f"AI API 호출 실패 - {exc}")
+        log("INFO", f"AI API 호출 횟수: {client.call_count}회")
+        return 1
+    except OutputError as exc:
+        log("ERROR", str(exc))
         log("INFO", f"AI API 호출 횟수: {client.call_count}회")
         return 1
 

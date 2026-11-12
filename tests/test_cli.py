@@ -14,6 +14,10 @@ def result(text):
     return GenerationResult(text=text, finish_reason="STOP")
 
 
+def truncated(text):
+    return GenerationResult(text=text, finish_reason="MAX_TOKENS")
+
+
 class CliTest(GitRepoTestCase):
     def setUp(self):
         super().setUp()
@@ -77,6 +81,24 @@ class CliTest(GitRepoTestCase):
         self.assertIn("AI API 호출 횟수: 2회", err)
         for header in ("## Why", "## What", "## How to Test"):
             self.assertIn(header, out)
+
+    def test_truncated_title_is_error(self):
+        (self.repo / "a.py").write_text("print('changed')\n")
+        with mock.patch.object(cli.GeminiClient, "generate", return_value=truncated("feat: a.py 수정 및 타")):
+            code, out, err = self.run_cli("commit")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "")  # 끊긴 제목을 결과로 내보내지 않는다
+        self.assertIn("제목이 완성되지 않았을 수 있어", err)
+
+    def test_truncated_bullet_keeps_complete_title(self):
+        (self.repo / "a.py").write_text("print('changed')\n")
+        cut = truncated("feat: a.py 수정\n\n- a.py 출력 변")
+        with mock.patch.object(cli.GeminiClient, "generate", return_value=cut):
+            code, out, err = self.run_cli("commit")
+        self.assertEqual(code, 0)
+        self.assertIn("feat: a.py 수정", out)
+        self.assertNotIn("출력 변", out)
+        self.assertIn("미완성 불릿", err)
 
     def test_dry_run_with_safe_mode_does_not_call_api(self):
         (self.repo / ".env").write_text("SECRET=abcdefghijk\n")

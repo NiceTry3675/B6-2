@@ -10,6 +10,7 @@ from gitgen.formatter import (
     finalize_pr,
     parse_commit,
     parse_pr,
+    title_may_be_cut,
     truncate_title,
 )
 
@@ -54,6 +55,12 @@ class CommitFormatTest(unittest.TestCase):
         body = ["cli.py 로그 개선 (gitgen/formatter.py)", "README.md 갱신"]
         self.assertEqual(count_file_mentions(body, paths), 3)
         self.assertEqual(count_file_mentions(["test_cli.py"], ["cli.py"]), 0)
+
+    def test_count_file_mentions_with_korean_particle(self):
+        paths = ["gitgen/cli.py"]
+        self.assertEqual(count_file_mentions(["gitgen/cli.py의 기본값 변경"], paths), 1)
+        self.assertEqual(count_file_mentions(["cli.py에 로그 추가"], paths), 1)
+        self.assertEqual(count_file_mentions(["cli.pyc 정리"], paths), 0)
 
     def test_warns_when_over_recommended(self):
         msg, _ = parse_commit("feat: " + "가" * 50)
@@ -115,6 +122,30 @@ class TruncatedTailTest(unittest.TestCase):
         drop_truncated_tail(draft)
         self.assertEqual(draft.sections["What"], ["b"])
         self.assertEqual(draft.sections["Why"], ["a"])
+
+
+    def test_pr_keeps_complete_bullet_when_cut_after_next_header(self):
+        draft, _ = parse_pr("TITLE: x\n## Why\n- 완성된 이유\n\n## What\n")
+        self.assertIsNone(drop_truncated_tail(draft))
+        self.assertEqual(draft.sections["Why"], ["완성된 이유"])
+
+
+class TitleMayBeCutTest(unittest.TestCase):
+    def test_commit_title_only(self):
+        msg, _ = parse_commit("feat: 로그 문서 추가 및 타")
+        self.assertTrue(title_may_be_cut(msg))
+
+    def test_commit_with_bullet_started(self):
+        msg, _ = parse_commit("feat: x\n\n- 잘린 불")
+        self.assertFalse(title_may_be_cut(msg))
+
+    def test_pr_without_sections(self):
+        draft, _ = parse_pr("TITLE: feat: 커밋 본문 불")
+        self.assertTrue(title_may_be_cut(draft))
+
+    def test_pr_with_section_started(self):
+        draft, _ = parse_pr("TITLE: feat: x\n\n## Why\n- 잘")
+        self.assertFalse(title_may_be_cut(draft))
 
 
 class TruncateTest(unittest.TestCase):
